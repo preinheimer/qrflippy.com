@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Flippy</title>
+  <style>
+    :root {
+      --bg: #f4f4f2;
+      --panel: #fff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --line: #e2e2de;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--fg);
+      font: 15px/1.4 system-ui, -apple-system, sans-serif;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr) 260px;
+      grid-template-areas: "config main stats";
+      gap: 24px;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 32px 16px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "main" "stats" "config";
+      }
+    }
+    main {
+      grid-area: main;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    #text {
+      width: min(100%, 440px);
+      padding: 12px 14px;
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--fg);
+    }
+    #text:focus { outline: 2px solid var(--fg); outline-offset: 1px; }
+    #qr {
+      width: min(100%, 440px);
+      aspect-ratio: 1;
+      border-radius: 8px;
+    }
+    #status { min-height: 1.4em; margin: 0; color: var(--muted); font-size: 14px; }
+
+    aside {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    #config { grid-area: config; }
+    #stats { grid-area: stats; }
+    aside h2 {
+      margin: 0 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    aside h2:not(:first-child) { margin-top: 20px; }
+
+    .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 14px; }
+    .field .row { display: flex; justify-content: space-between; }
+    .field output { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .field select, .field input[type="range"] { width: 100%; }
+    .field select { padding: 4px; font: inherit; }
+    .check { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 12px; font-size: 14px; }
+    .check small { display: block; color: var(--muted); }
+    .colors { display: flex; gap: 16px; }
+    .colors label { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+
+    dl { margin: 0; display: grid; grid-template-columns: 1fr auto; row-gap: 6px; font-size: 14px; }
+    dt { color: var(--muted); }
+    dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+    dt.sub { padding-left: 12px; }
+    dt.strong, dd.strong { color: var(--fg); font-weight: 600; }
+    button {
+      margin-top: 16px;
+      padding: 6px 12px;
+      font: inherit;
+      font-size: 13px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--fg);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside id="config" aria-label="Configuration">
+      <h2>Movement</h2>
+      <label class="check">
+        <input id="travel" type="checkbox" checked>
+        <span>Move blocks to new positions
+          <small>Blocks that turn light travel to nearby squares that turn dark.</small>
+        </span>
+      </label>
+      <label class="field">
+        <span class="row">Max distance <output id="max-travel-out"></output></span>
+        <input id="max-travel" type="range" min="1" max="30" step="1" value="10">
+      </label>
+      <label class="field">
+        <span class="row">Time per extra square <output id="per-square-out"></output></span>
+        <input id="per-square" type="range" min="0" max="300" step="10" value="60">
+      </label>
+      <label class="field">Path
+        <select id="path">
+          <option value="hv">Horizontal, then vertical</option>
+          <option value="vh">Vertical, then horizontal</option>
+          <option value="straight">Straight line</option>
+        </select>
+      </label>
+
+      <label class="check">
+        <input id="split" type="checkbox" checked>
+        <span>Split new blocks off existing ones
+          <small>A square that needs filling gets a copy that slides out of the nearest dark block.</small>
+        </span>
+      </label>
+      <label class="check">
+        <input id="merge" type="checkbox" checked>
+        <span>Merge leftover blocks
+          <small>A block nobody needs slides into the nearest dark block instead of fading.</small>
+        </span>
+      </label>
+      <label class="check">
+        <input id="strict" type="checkbox" checked>
+        <span>Strict split source
+          <small>Only split from blocks that are fully dark now and stay dark.</small>
+        </span>
+      </label>
+
+      <h2>Timing</h2>
+      <label class="field">
+        <span class="row">Cell duration <output id="speed-out"></output></span>
+        <input id="speed" type="range" min="100" max="2000" step="50" value="450">
+      </label>
+      <label class="field">Easing
+        <select id="easing">
+          <option value="smooth">Smooth</option>
+          <option value="linear">Linear</option>
+          <option value="out">Ease out</option>
+          <option value="in">Ease in</option>
+        </select>
+      </label>
+      <label class="field">When nothing can slide
+        <select id="effect">
+          <option value="fade">Fade</option>
+          <option value="grow">Grow</option>
+          <option value="mixed">Mixed</option>
+        </select>
+      </label>
+
+      <h2>Cascade</h2>
+      <label class="field">Start from
+        <select id="origin">
+          <option value="tl">Top-left corner</option>
+          <option value="tr">Top-right corner</option>
+          <option value="bl">Bottom-left corner</option>
+          <option value="br">Bottom-right corner</option>
+          <option value="center">Center outward</option>
+          <option value="none">No cascade</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="row">Sweep length <output id="cascade-out"></output></span>
+        <input id="cascade" type="range" min="0" max="5" step="0.1" value="1.2">
+      </label>
+      <label class="field">
+        <span class="row">Jitter <output id="jitter-out"></output></span>
+        <input id="jitter" type="range" min="0" max="500" step="10" value="40">
+      </label>
+
+      <h2>QR code</h2>
+      <label class="field">Error correction
+        <select id="ecl">
+          <option value="L">L · ~7%</option>
+          <option value="M" selected>M · ~15%</option>
+          <option value="Q">Q · ~25%</option>
+          <option value="H">H · ~30%</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="row">Quiet zone <output id="quiet-out"></output></span>
+        <input id="quiet" type="range" min="0" max="8" step="1" value="4">
+      </label>
+      <div class="colors">
+        <label>Dark <input id="dark" type="color" value="#1a1a1a"></label>
+        <label>Light <input id="light" type="color" value="#ffffff"></label>
+      </div>
+    </aside>
+
+    <main>
+      <h1>QR Flippy</h1>
+      <input id="text" type="text" value="https://qrflippy.com" placeholder="Type something…" autocomplete="off" spellcheck="false" autofocus>
+      <canvas id="qr" aria-label="QR code"></canvas>
+      <p id="status"></p>
+    </main>
+
+    <aside id="stats" aria-label="Move statistics" aria-live="polite">
+      <h2>Last change</h2>
+      <dl>
+        <dt class="strong">Blocks changed</dt><dd class="strong" data-stat="last.changed">0</dd>
+        <dt class="sub">to dark</dt><dd data-stat="last.toDark">0</dd>
+        <dt class="sub">to light</dt><dd data-stat="last.toLight">0</dd>
+        <dt class="strong">Sliding moves</dt><dd class="strong" data-stat="last.sliding">0</dd>
+        <dt class="sub">blocks moved</dt><dd data-stat="last.travel">0</dd>
+        <dt class="sub">split off a block</dt><dd data-stat="last.split">0</dd>
+        <dt class="sub">merged into a block</dt><dd data-stat="last.merge">0</dd>
+        <dt class="sub">squares covered</dt><dd data-stat="last.distance">0</dd>
+        <dt class="sub">longest slide</dt><dd data-stat="last.longest">0</dd>
+        <dt class="strong">Other moves</dt><dd class="strong" data-stat="last.other">0</dd>
+        <dt class="sub">fades</dt><dd data-stat="last.fade">0</dd>
+        <dt class="sub">grows</dt><dd data-stat="last.grow">0</dd>
+        <dt>Redirected mid-move</dt><dd data-stat="last.redirected">0</dd>
+        <dt>Version</dt><dd data-stat="last.version">–</dd>
+      </dl>
+
+      <h2>Session total</h2>
+      <dl>
+        <dt>Updates</dt><dd data-stat="total.updates">0</dd>
+        <dt class="strong">Blocks changed</dt><dd class="strong" data-stat="total.changed">0</dd>
+        <dt class="strong">Sliding moves</dt><dd class="strong" data-stat="total.sliding">0</dd>
+        <dt class="sub">blocks moved</dt><dd data-stat="total.travel">0</dd>
+        <dt class="sub">split off a block</dt><dd data-stat="total.split">0</dd>
+        <dt class="sub">merged into a block</dt><dd data-stat="total.merge">0</dd>
+        <dt class="sub">squares covered</dt><dd data-stat="total.distance">0</dd>
+        <dt class="strong">Other moves</dt><dd class="strong" data-stat="total.other">0</dd>
+        <dt class="sub">fades</dt><dd data-stat="total.fade">0</dd>
+        <dt class="sub">grows</dt><dd data-stat="total.grow">0</dd>
+        <dt>Redirected mid-move</dt><dd data-stat="total.redirected">0</dd>
+      </dl>
+
+      <h2>Right now</h2>
+      <dl>
+        <dt>Blocks in motion</dt><dd data-stat="live.moving">0</dd>
+      </dl>
+      <button id="reset" type="button">Reset totals</button>
+    </aside>
+  </div>
+  <script src="qr.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
